@@ -1,0 +1,14 @@
+{
+  "name": "sechuk-control-server",
+  "version": "0.1.0",
+  "description": "미션 외관세척기 PLC-HMI 통신 미들웨어 (Modbus TCP client + WebSocket server)",
+  "main": "src/api/wsServer.js",
+  "scripts": {
+    "start": "node src/api/wsServer.js",
+    "test": "echo \"TODO: server/test/ 유닛테스트 연결\" && exit 1"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.0",
+    "ws": "^8.x"
+  }
+}

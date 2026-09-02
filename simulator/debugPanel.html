@@ -1,0 +1,367 @@
+<!--
+  시뮬레이터(mockPlcServer.js) 디버그 패널.
+  simulator/src/debugServer.js 의 WebSocket(기본 ws://127.0.0.1:5021)에 접속해서
+  가상 PLC 레지스터 상태를 실시간으로 보여주고, 센서/버튼(Discrete Input)과
+  세척 시퀀스 단계(sequenceStep)를 사람이 직접 조작할 수 있게 해준다.
+
+  용도: 실제 PLC가 없는 개발 단계에서, server/hmi가 보낸 명령(Coil/Holding Register)이
+  시뮬레이터에 실제로 반영됐는지 눈으로 확인하고, 반대로 센서 신호는 이 패널에서 직접
+  흉내내면서 server/hmi 쪽 반응을 테스트하기 위한 도구다. 실제 PLC에는 없는 기능이며
+  이 프로젝트의 정식 HMI(hmi/)와는 별개다.
+
+  사용법: simulator를 먼저 켠 뒤(`npm start`), 이 파일을 브라우저로 그냥 열면 된다
+  (서버 필요 없음 — 파일을 더블클릭해서 열어도 동작).
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>시뮬레이터 디버그 패널</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 1rem; background: #f5f5f5; }
+  h1 { font-size: 1.2rem; margin: 0 0 0.25rem; }
+  #conn-status { font-size: 0.9rem; margin-bottom: 1rem; }
+  #conn-status.connected { color: green; }
+  #conn-status.disconnected { color: red; }
+
+  section {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+  section h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+  section p.desc { font-size: 0.8rem; color: #666; margin: 0 0 0.75rem; }
+
+  .grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+  .signal-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 110px;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #eee;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .signal-btn.on { background: #4caf50; color: white; border-color: #388e3c; }
+  .signal-btn .label { font-weight: bold; }
+  .signal-btn .addr { font-size: 0.7rem; color: inherit; opacity: 0.7; }
+
+  .readonly-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 110px;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background: #eee;
+    font-size: 0.85rem;
+  }
+  .readonly-badge.on { background: #2196f3; color: white; border-color: #1565c0; }
+  .readonly-badge .label { font-weight: bold; }
+  .readonly-badge .addr { font-size: 0.7rem; opacity: 0.7; }
+  .readonly-badge .value { font-size: 1rem; margin-top: 0.25rem; }
+
+  #step-buttons { display: flex; gap: 0.4rem; }
+  .step-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid #999;
+    background: #eee;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .step-btn.current { background: #ff9800; color: white; border-color: #e65100; }
+
+  #captured-steps { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
+  .captured-badge {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid #999;
+    background: #eee;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .captured-badge.captured { background: #4caf50; color: white; border-color: #388e3c; }
+
+  #seq-buttons button { margin-right: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>시뮬레이터 디버그 패널</h1>
+  <div id="conn-status" class="disconnected">연결 안 됨</div>
+
+  <section>
+    <h2>세척 시퀀스 단계 (sequenceStep, HR 40002)</h2>
+    <p class="desc">실제로는 PLC가 채워주는 값 — 여기서는 테스트를 위해 사람이 직접 지정한다.</p>
+    <div id="step-buttons"></div>
+  </section>
+
+  <section>
+    <h2>시퀀스 기록 (PLC 업체 제공용)</h2>
+    <p class="desc">
+      원하는 단계를 위에서 선택하고, 입력(센서/버튼)을 그 단계에 맞게 세팅한 뒤 "현재 단계 상태 저장"을
+      누르면 그 시점의 전체 신호 상태가 기록된다. 0~9단계를 다 기록한 뒤 "JSON 파일로 내보내기"를 누르면
+      docs/02_IO_태그맵.md 기준 신호명·주소와 함께 파일로 저장된다 — PLC 업체에 시퀀스 스펙으로 전달할 때 쓴다.
+    </p>
+    <div id="seq-buttons">
+      <button type="button" id="seq-capture">현재 단계 상태 저장</button>
+      <button type="button" id="seq-export">JSON 파일로 내보내기</button>
+      <button type="button" id="seq-clear">전체 초기화</button>
+    </div>
+    <div id="captured-steps"></div>
+  </section>
+
+  <section>
+    <h2>입력 — 센서/버튼 (Discrete Input, 사람이 조작)</h2>
+    <p class="desc">클릭해서 켜고 끌 수 있다. 실제 현장에서는 물리 센서/버튼이 이 값을 바꾼다.</p>
+    <div id="discrete-inputs" class="grid"></div>
+  </section>
+
+  <section>
+    <h2>출력 — 코일 (Coil, server가 보낸 지령 확인용, 읽기전용)</h2>
+    <p class="desc">server/hmi가 명령을 보내면 여기 파란색으로 켜진다 — "신호가 도착했는지" 확인용.</p>
+    <div id="coils" class="grid"></div>
+  </section>
+
+  <section>
+    <h2>홀딩 레지스터 (Holding Register, 읽기전용)</h2>
+    <p class="desc">sequenceStep 제외 나머지 숫자값 — server가 쓴 지령이나 시뮬레이터가 자동 반영한 피드백.</p>
+    <div id="holding-registers" class="grid"></div>
+  </section>
+
+<script>
+(function () {
+  const WS_PORT = 5021; // simulator/src/debugServer.js 의 DEBUG_PORT와 맞춰야 한다
+  const statusEl = document.getElementById("conn-status");
+  const diContainer = document.getElementById("discrete-inputs");
+  const coilContainer = document.getElementById("coils");
+  const hrContainer = document.getElementById("holding-registers");
+  const stepContainer = document.getElementById("step-buttons");
+
+  let socket = null;
+  let built = false; // registerMap 구조로 DOM을 한 번만 만들고, 이후엔 값만 갱신
+  let currentRegisterMap = null;
+  let latestValues = null; // 가장 최근에 받은 values 스냅샷 — 시퀀스 캡처용
+  const capturedSteps = {}; // { [step]: { capturedAt, discreteInputs, coils, holdingRegisters } }
+  const capturedStepsContainer = document.getElementById("captured-steps");
+
+  function connect() {
+    socket = new WebSocket(`ws://${location.hostname || "127.0.0.1"}:${WS_PORT}`);
+
+    socket.addEventListener("open", () => {
+      statusEl.textContent = "연결됨";
+      statusEl.className = "connected";
+    });
+
+    socket.addEventListener("message", (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type !== "state") return;
+      if (!built) {
+        buildUI(msg.registerMap);
+        built = true;
+      }
+      currentRegisterMap = msg.registerMap;
+      latestValues = msg.values;
+      updateValues(msg.registerMap, msg.values);
+    });
+
+    socket.addEventListener("close", () => {
+      statusEl.textContent = "연결 끊김 — 2초 후 재접속 (simulator가 켜져 있는지 확인)";
+      statusEl.className = "disconnected";
+      setTimeout(connect, 2000);
+    });
+
+    socket.addEventListener("error", () => {
+      socket.close();
+    });
+  }
+
+  function send(msg) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(msg));
+    }
+  }
+
+  // 이름 기준으로 오름차순(addr 기준) 정렬된 [name, meta] 목록을 만든다
+  function sortedEntries(group) {
+    return Object.entries(group).sort((a, b) => a[1].addr - b[1].addr);
+  }
+
+  function buildUI(registerMap) {
+    currentRegisterMap = registerMap;
+
+    // Discrete Inputs — 클릭 가능한 토글 버튼
+    sortedEntries(registerMap.discreteInputs).forEach(([name, meta]) => {
+      const btn = document.createElement("div");
+      btn.className = "signal-btn";
+      btn.dataset.name = name;
+      btn.innerHTML = `<span class="label">${name}</span><span class="addr">DI ${meta.label}</span>`;
+      btn.addEventListener("click", () => {
+        const isOn = btn.classList.contains("on");
+        send({ type: "setDiscreteInput", name, value: !isOn });
+      });
+      diContainer.appendChild(btn);
+    });
+
+    // Coils — 읽기전용 배지
+    sortedEntries(registerMap.coils).forEach(([name, meta]) => {
+      const badge = document.createElement("div");
+      badge.className = "readonly-badge";
+      badge.dataset.name = name;
+      badge.innerHTML = `<span class="label">${name}</span><span class="addr">Coil ${meta.label}</span>`;
+      coilContainer.appendChild(badge);
+    });
+
+    // Holding Registers — sequenceStep은 위쪽 전용 UI로 따로 그리고 여기서는 제외
+    sortedEntries(registerMap.holdingRegisters)
+      .filter(([name]) => name !== "sequenceStep")
+      .forEach(([name, meta]) => {
+        const badge = document.createElement("div");
+        badge.className = "readonly-badge";
+        badge.dataset.name = name;
+        badge.innerHTML = `<span class="label">${name}</span><span class="addr">HR ${meta.label}</span><span class="value"></span>`;
+        hrContainer.appendChild(badge);
+      });
+
+    // sequenceStep 0~9 버튼
+    for (let step = 0; step <= 9; step++) {
+      const btn = document.createElement("div");
+      btn.className = "step-btn";
+      btn.textContent = step;
+      btn.addEventListener("click", () => {
+        send({ type: "setHoldingRegister", name: "sequenceStep", value: step });
+      });
+      stepContainer.appendChild(btn);
+    }
+
+    // 시퀀스 기록 캡처 현황 배지 0~9
+    for (let step = 0; step <= 9; step++) {
+      const badge = document.createElement("div");
+      badge.className = "captured-badge";
+      badge.dataset.step = step;
+      badge.textContent = step;
+      capturedStepsContainer.appendChild(badge);
+    }
+  }
+
+  // unit("0.1mm" 등)에 맞춰 사람이 읽기 좋은 문자열로 변환
+  function formatValue(raw, unit) {
+    if (unit === "0.1mm") return `${(raw * 0.1).toFixed(1)}mm`;
+    if (unit === "rpm") return `${raw}rpm`;
+    return String(raw);
+  }
+
+  function updateValues(registerMap, values) {
+    sortedEntries(registerMap.discreteInputs).forEach(([name, meta]) => {
+      const el = diContainer.querySelector(`[data-name="${name}"]`);
+      if (el) el.classList.toggle("on", !!values.discreteInputs[meta.addr]);
+    });
+
+    sortedEntries(registerMap.coils).forEach(([name, meta]) => {
+      const el = coilContainer.querySelector(`[data-name="${name}"]`);
+      if (el) el.classList.toggle("on", !!values.coils[meta.addr]);
+    });
+
+    sortedEntries(registerMap.holdingRegisters)
+      .filter(([name]) => name !== "sequenceStep")
+      .forEach(([name, meta]) => {
+        const el = hrContainer.querySelector(`[data-name="${name}"] .value`);
+        if (el) el.textContent = formatValue(values.holdingRegisters[meta.addr], meta.unit);
+      });
+
+    const stepMeta = registerMap.holdingRegisters.sequenceStep;
+    const currentStep = values.holdingRegisters[stepMeta.addr];
+    Array.from(stepContainer.children).forEach((btn, i) => {
+      btn.classList.toggle("current", i === currentStep);
+    });
+  }
+
+  // registerMap의 한 그룹(discreteInputs/coils/holdingRegisters)을
+  // { 신호명: { value, label, unit } } 형태로 바꾼다 — 사람이 읽기 좋고 이름으로 대조 가능하게
+  function buildNamedSnapshot(group, valuesArray) {
+    const out = {};
+    sortedEntries(group).forEach(([name, meta]) => {
+      out[name] = { value: valuesArray[meta.addr], label: meta.label, unit: meta.unit || null };
+    });
+    return out;
+  }
+
+  function renderCapturedBadges() {
+    Array.from(capturedStepsContainer.children).forEach((badge) => {
+      const step = Number(badge.dataset.step);
+      badge.classList.toggle("captured", step in capturedSteps);
+    });
+  }
+
+  // 현재 sequenceStep 값을 기준으로, 지금 화면에 보이는 전체 신호 상태를 그 단계 기록으로 저장한다.
+  // (덮어쓰기 — 같은 단계를 다시 저장하면 최신 상태로 갱신됨)
+  function captureCurrentStep() {
+    if (!currentRegisterMap || !latestValues) {
+      alert("아직 시뮬레이터로부터 상태를 받지 못했습니다. 연결을 확인하세요.");
+      return;
+    }
+    const stepMeta = currentRegisterMap.holdingRegisters.sequenceStep;
+    const step = latestValues.holdingRegisters[stepMeta.addr];
+    capturedSteps[step] = {
+      capturedAt: new Date().toISOString(),
+      discreteInputs: buildNamedSnapshot(currentRegisterMap.discreteInputs, latestValues.discreteInputs),
+      coils: buildNamedSnapshot(currentRegisterMap.coils, latestValues.coils),
+      holdingRegisters: buildNamedSnapshot(currentRegisterMap.holdingRegisters, latestValues.holdingRegisters),
+    };
+    renderCapturedBadges();
+  }
+
+  function downloadJSON(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function exportSequence() {
+    if (Object.keys(capturedSteps).length === 0) {
+      alert("저장된 단계가 없습니다. 먼저 '현재 단계 상태 저장'으로 최소 1개 이상 기록하세요.");
+      return;
+    }
+    const data = {
+      project: "미션 외관세척기 세척 시퀀스 — PLC 업체 제공용 (제안 초안)",
+      exportedAt: new Date().toISOString(),
+      note:
+        "docs/03_공정시퀀스.md 0~9단계 기준. 각 단계의 신호 상태는 시뮬레이터 디버그 패널에서 " +
+        "사람이 수동으로 세팅·캡처한 값이며, 실제 PLC 구현 시 참고용 초안입니다. " +
+        "신호명·Modbus 주소는 docs/02_IO_태그맵.md 제안 초안 기준입니다.",
+      steps: capturedSteps,
+    };
+    const filename = `sequence_export_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    downloadJSON(filename, data);
+  }
+
+  function clearCapturedSteps() {
+    if (!confirm("기록된 모든 단계를 지울까요?")) return;
+    Object.keys(capturedSteps).forEach((key) => delete capturedSteps[key]);
+    renderCapturedBadges();
+  }
+
+  document.getElementById("seq-capture").addEventListener("click", captureCurrentStep);
+  document.getElementById("seq-export").addEventListener("click", exportSequence);
+  document.getElementById("seq-clear").addEventListener("click", clearCapturedSteps);
+
+  connect();
+})();
+</script>
+</body>
+</html>

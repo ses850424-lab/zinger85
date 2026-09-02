@@ -1,0 +1,108 @@
+{
+  "categories": {
+    "FF": [
+      {
+        "id": "FF-01",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-02",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-03",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-04",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-05",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-06",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-07",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-08",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-09",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FF-10",
+        "name": "",
+        "waypoints": []
+      }
+    ],
+    "FR": [
+      {
+        "id": "FR-01",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-02",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-03",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-04",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-05",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-06",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-07",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-08",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-09",
+        "name": "",
+        "waypoints": []
+      },
+      {
+        "id": "FR-10",
+        "name": "",
+        "waypoints": []
+      }
+    ]
+  }
+}

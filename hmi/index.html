@@ -1,0 +1,48 @@
+<!-- HMI 메인 진입점. 화면 전환(자동/수동/알람)은 js/screens/ 의 각 모듈이 담당.
+     근거: docs/01_설비개요.md 6항 HMI 화면 요구사항 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>미션 외관세척기 제어 HMI</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="connection-status">
+      <span id="conn-ws" class="conn-badge">서버 연결: -</span>
+      <span id="conn-plc" class="conn-badge">PLC 통신: -</span>
+    </div>
+    <nav id="screen-nav">
+      <button type="button" data-screen="main-screen">자동</button>
+      <button type="button" data-screen="manual-screen">수동</button>
+      <button type="button" data-screen="model-screen">기종설정</button>
+      <button type="button" data-screen="alarm-screen">알람</button>
+    </nav>
+    <div id="main-screen" class="screen"></div>
+    <div id="manual-screen" class="screen" hidden></div>
+    <div id="model-screen" class="screen" hidden></div>
+    <div id="alarm-screen" class="screen" hidden></div>
+  </div>
+
+  <script>
+    // 화면 전환(탭) 로직 — PLC 통신과 무관한 순수 UI 상태이므로 여기 인라인으로 둔다.
+    // screens/*.js 에서도 window.showScreen("manual-screen") 형태로 호출한다.
+    window.showScreen = function (screenId) {
+      document.querySelectorAll(".screen").forEach((el) => {
+        el.hidden = el.id !== screenId;
+      });
+    };
+    document.querySelectorAll("#screen-nav button").forEach((btn) => {
+      btn.addEventListener("click", () => window.showScreen(btn.dataset.screen));
+    });
+  </script>
+
+  <script src="js/wsClient.js"></script>
+  <script src="js/connectionStatus.js"></script>
+  <script src="js/screens/mainScreen.js"></script>
+  <script src="js/screens/manualScreen.js"></script>
+  <script src="js/screens/modelScreen.js"></script>
+  <script src="js/screens/alarmScreen.js"></script>
+</body>
+</html>

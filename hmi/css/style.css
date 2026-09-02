@@ -1,0 +1,73 @@
+/* HMI 기본 스타일 — 기능 위주 최소 스타일 (터치 최적화용 큰 버튼/고대비 색상은 나중 단계) */
+
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 1rem;
+}
+
+#screen-nav button {
+  margin-right: 0.5rem;
+}
+
+.screen h2 {
+  margin-top: 0;
+}
+
+.screen button {
+  margin: 0.25rem;
+}
+
+.ok {
+  color: green;
+}
+
+.warn {
+  color: orange;
+}
+
+.alarm {
+  color: red;
+  font-weight: bold;
+}
+
+#connection-status {
+  margin-bottom: 0.5rem;
+}
+
+.conn-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  margin-right: 0.5rem;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 0.85rem;
+  background: #eee;
+  color: #666;
+}
+
+.conn-badge.ok {
+  background: #2e7d32;
+  color: white;
+}
+
+.conn-badge.bad {
+  background: #b71c1c;
+  color: white;
+}
+
+#alarm-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.model-cat-btn.on,
+.model-num-btn.on {
+  background: #4caf50;
+  color: white;
+}
+
+#model-waypoint-table {
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}

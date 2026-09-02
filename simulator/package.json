@@ -1,0 +1,13 @@
+{
+  "name": "sechuk-plc-simulator",
+  "version": "0.1.0",
+  "description": "PLC 없이 개발하기 위한 가상 Modbus TCP 서버 (docs/02_IO_태그맵.md 기준 레지스터 모사)",
+  "main": "src/mockPlcServer.js",
+  "scripts": {
+    "start": "node src/mockPlcServer.js"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.0",
+    "ws": "^8.x"
+  }
+}
